@@ -57,7 +57,7 @@ typedef struct {
   float prefactor;
   float lb_force_density[3];
   unsigned int number_of_species;
-  int reaction_species[3];
+//  int reaction_species[3];
   float rho_reactant_reservoir;
   float rho_product0_reservoir;
   float rho_product1_reservoir;
@@ -73,8 +73,19 @@ typedef struct {
   bool fluidcoupling_ideal_contribution;
 #ifdef EK_ELECTROSTATIC_COUPLING
   bool es_coupling;
+#endif
+#ifdef EK_CATALYTIC_REACTIONS
+  bool reaction;
+#endif
+#ifdef EK_ELECTROSTATIC_COUPLING
   float *charge_potential_buffer;
   float *electric_field;
+#endif
+#ifdef EK_CATALYTIC_REACTIONS
+  ekfloat *reaction_rate;
+  int *reaction_species[3];
+  ekfloat *reaction_coefficients[3];
+  ekfloat *reaction_flux[MAX_NUMBER_OF_SPECIES];
 #endif
   float *charge_potential;
   ekfloat *j;
@@ -174,6 +185,10 @@ int ek_set_ext_force_density(int species, double ext_force_density_x,
 int ek_set_stencil(int stencil);
 int ek_set_advection(bool advection);
 int ek_set_fluidcoupling(bool ideal_contribution);
+#ifdef EK_CATALYTIC_REACTIONS
+int ek_set_reaction(bool reaction);
+int ek_set_reaction_bounary_values();
+#endif
 int ek_node_print_velocity(int x, int y, int z, double *velocity);
 int ek_node_print_density(int species, int x, int y, int z, double *density);
 int ek_node_print_flux(int species, int x, int y, int z, double *flux);

@@ -293,6 +293,11 @@ void integrate_vv(int n_steps, int reuse_forces) {
     ghmc_init();
 #endif
 
+#ifdef EK_CATALYTIC_REACTIONS
+  if(ek_initialized)
+    ek_set_reaction_bounary_values();
+#endif
+
   if (check_runtime_errors())
     return;
 

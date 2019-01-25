@@ -40,6 +40,11 @@ public:
     m_charge_density = 0.0;
     m_net_charge = 0.0;
 #endif
+#ifdef EK_CATALYTIC_REACTIONS
+    m_reaction_species = Vector3i{-1,-1,-1};
+    m_reaction_coefficients = Vector3d{0,0,0};
+    m_reaction_rate = -1.0;
+#endif
   }
 
   /* Calculate distance from the lbboundary */
@@ -82,6 +87,22 @@ public:
 
   float &charge_density() { return m_charge_density; }
   float &net_charge() { return m_net_charge; }
+
+#ifdef EK_CATALYTIC_REACTIONS
+  void set_reaction_species(const Vector3i reaction_species) {
+    m_reaction_species = reaction_species;
+  }
+  void set_reaction_coefficients(const Vector3d reaction_coefficients) {
+    m_reaction_coefficients = reaction_coefficients;
+  }
+  void set_reaction_rate(float reaction_rate) {
+    m_reaction_rate = reaction_rate;
+  }
+
+  Vector3i &reaction_species() { return m_reaction_species; }
+  Vector3d &reaction_coefficients() { return m_reaction_coefficients; }
+  float &reaction_rate() { return m_reaction_rate; }
+#endif
 #endif
 
 private:
@@ -102,6 +123,12 @@ private:
                      // different initialization infrastructure.
   float m_charge_density;
   float m_net_charge;
+#ifdef EK_CATALYTIC_REACTIONS
+  // simple x_1 A -> x_2 B + x_3 C
+  Vector3i m_reaction_species;
+  Vector3d m_reaction_coefficients;
+  float m_reaction_rate;
+#endif
 #endif
 };
 

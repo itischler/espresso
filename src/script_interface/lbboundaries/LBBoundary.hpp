@@ -62,6 +62,25 @@ public:
           [this]() { return m_lbboundary->net_charge(); }, VariantType::DOUBLE,
           0}});
 #endif
+#ifdef EK_CATALYTIC_REACTIONS
+    add_parameters(
+        {{"reaction_species",
+          [this](Variant const &value) {
+            m_lbboundary->set_reaction_species(get_value<Vector3i>(value));
+          },
+          [this]() { return m_lbboundary->reaction_species(); }},
+         {"reaction_coefficients",
+          [this](Variant const &value) {
+            m_lbboundary->set_reaction_coefficients(get_value<Vector3d>(value));
+          },
+          [this]() { return m_lbboundary->reaction_coefficients(); }},
+         {"reaction_rate",
+          [this](Variant const &value) {
+            m_lbboundary->set_reaction_rate(boost::get<double>(value));
+          },
+          [this]() { return m_lbboundary->reaction_rate(); }, VariantType::DOUBLE,
+          0}});
+#endif
   }
 
   Variant call_method(const std::string &name, const VariantMap &) override {

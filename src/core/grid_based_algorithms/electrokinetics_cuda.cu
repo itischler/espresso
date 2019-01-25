@@ -75,9 +75,12 @@ void LBBoundaries::lb_init_boundaries();
 EK_parameters ek_parameters = {
     -1.0, -1.0,         -1.0, 0,    0,    0,    0,    0,
     -1.0, -1.0,         0.0,  0.0,  0.0,  -1.0, -1.0, {0.0, 0.0, 0.0},
-    0,    {-1, -1, -1}, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+    0,    /*{-1, -1, -1},*/ -1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
     -1.0, -1.0,         -1.0, 0,    -1,   true, true,
 #ifdef EK_ELECTROSTATIC_COUPLING
+    false,
+#endif
+#ifdef EK_CATALYTIC_REACTIONS
     false
 #endif
 };
@@ -1755,6 +1758,12 @@ __global__ void ek_propagate_densities(unsigned int species_index) {
     ek_parameters_gpu->rho[species_index][index] +=
         ek_parameters_gpu->j[jindex_getByRhoLinear(
             neighborindex[EK_LINK_DUU - 13], EK_LINK_UDD)];
+
+#ifdef EK_CATALYTIC_REACTIONS
+    if(ek_parameters_gpu->reaction)
+      ek_parameters_gpu->rho[species_index][index] += 
+          ek_parameters_gpu->reaction_flux[species_index][index];
+#endif
   }
 }
 
@@ -1876,6 +1885,88 @@ __global__ void ek_clear_fluxes() {
     }
   }
 }
+
+#ifdef EK_CATALYTIC_REACTIONS
+__global__ void ek_clear_reaction_fluxes() {
+  unsigned int index = ek_getThreadIndex();
+  if (index < ek_parameters_gpu->number_of_nodes) {
+    for (int i = 0; i < ek_parameters_gpu->number_of_species; i++) {
+      ek_parameters_gpu->reaction_flux[i][index] = 0.0f;
+    }
+  }
+}
+
+__global__ void ek_calculate_reaction_fluxes(LB_nodes_gpu lb_node,
+                                             LB_node_force_density_gpu node_f) {
+  unsigned int index = ek_getThreadIndex();
+  if (index < ek_parameters_gpu->number_of_nodes) {
+    if(lb_node.boundary[index]) return;
+    unsigned int coord[3];
+    unsigned int neighborindex[6];
+    float agrid_inv = 1.0f / ek_parameters_gpu->agrid;
+    float force_conv =
+        agrid_inv * ek_parameters_gpu->time_step * ek_parameters_gpu->time_step;
+    float force = 0.0;
+
+    rhoindex_linear2cartesian(index, coord);
+
+    neighborindex[EK_LINK_U00] = rhoindex_cartesian2linear(
+        (coord[0] + 1) % ek_parameters_gpu->dim_x, coord[1], coord[2]);
+
+    neighborindex[EK_LINK_0U0] = rhoindex_cartesian2linear(
+        coord[0], (coord[1] + 1) % ek_parameters_gpu->dim_y, coord[2]);
+
+    neighborindex[EK_LINK_00U] = rhoindex_cartesian2linear(
+        coord[0], coord[1], (coord[2] + 1) % ek_parameters_gpu->dim_z);
+
+    neighborindex[EK_LINK_U00 + 3] = rhoindex_cartesian2linear(
+        (coord[0] - 1 + ek_parameters_gpu->dim_x) % ek_parameters_gpu->dim_x, coord[1], coord[2]);
+
+    neighborindex[EK_LINK_0U0 + 3] = rhoindex_cartesian2linear(
+        coord[0], (coord[1] - 1 + ek_parameters_gpu->dim_y) % ek_parameters_gpu->dim_y, coord[2]);
+
+    neighborindex[EK_LINK_00U + 3] = rhoindex_cartesian2linear(
+        coord[0], coord[1], (coord[2] - 1 + ek_parameters_gpu->dim_z) % ek_parameters_gpu->dim_z);
+
+    for(int i = 0; i < 6; i++) {
+      if(lb_node.boundary[neighborindex[i]] &&
+         ek_parameters_gpu->reaction_species[0][lb_node.boundary[neighborindex[i]]-1] > -1) {
+
+        int r_spec[3];
+        float flux;
+
+        r_spec[0] = ek_parameters_gpu->reaction_species[0][lb_node.boundary[neighborindex[i]]-1];
+        r_spec[1] = ek_parameters_gpu->reaction_species[1][lb_node.boundary[neighborindex[i]]-1];
+        r_spec[2] = ek_parameters_gpu->reaction_species[2][lb_node.boundary[neighborindex[i]]-1];
+
+        for(int j = 0; j < 3; j++){
+          if(r_spec[j] > -1){
+            flux = ek_parameters_gpu->rho[r_spec[0]][index] / 
+                   ek_parameters_gpu->reaction_coefficients[0][lb_node.boundary[neighborindex[i]]-1] * 
+                   ek_parameters_gpu->reaction_coefficients[j][lb_node.boundary[neighborindex[i]]-1] * 
+                   ek_parameters_gpu->reaction_rate[lb_node.boundary[neighborindex[i]]-1] * 
+                   ek_parameters_gpu->time_step * agrid_inv * agrid_inv;
+
+            if(j==0) flux *= -1.0f;
+
+            ek_parameters_gpu->reaction_flux[r_spec[j]][index] += flux;
+
+            if (ek_parameters_gpu->fluidcoupling_ideal_contribution) {
+              force = flux * ek_parameters_gpu->T * ek_parameters_gpu->agrid / 
+                      ek_parameters_gpu->reaction_rate[lb_node.boundary[neighborindex[i]]-1];
+              force *= force_conv;
+//              if(i>2) force *= -1.0f;
+              atomicAdd(&node_f.force_density[index + (i%3) * ek_parameters_gpu->number_of_nodes], force * 1.0f);
+              //atomicAdd(&node_f.force_density[neighborindex[i] + (i%3) * ek_parameters_gpu->number_of_nodes], force * 0.5f);
+            }
+          }
+        }
+      }
+    }
+
+  }
+}
+#endif
 
 __global__ void ek_init_species_density_homogeneous() {
   unsigned int index = ek_getThreadIndex();
@@ -2276,6 +2367,14 @@ void ek_integrate() {
 
   // KERNELCALL( ek_clear_node_force, dim_grid, threads_per_block, node_f );
 
+#ifdef EK_CATALYTIC_REACTIONS
+  if(ek_parameters.reaction){
+    KERNELCALL(ek_clear_reaction_fluxes, dim_grid, threads_per_block);
+    KERNELCALL(ek_calculate_reaction_fluxes, dim_grid, threads_per_block,
+               *current_nodes, node_f);
+  }
+#endif
+
   /* Integrate diffusion-advection */
 
   for (int i = 0; i < ek_parameters.number_of_species; i++) {
@@ -2360,6 +2459,15 @@ void ek_init_species(int species) {
     ek_parameters.d[ek_parameters.species_index[species]] =
         ek_parameters.D[ek_parameters.species_index[species]] /
         (1.0 + 2.0 * sqrt(2.0));
+
+    if (ek_parameters.reaction) {
+      cuda_safe_mem(
+            cudaMalloc((void **)&ek_parameters.reaction_flux[ek_parameters.species_index[species]],
+                       ek_parameters.number_of_nodes * sizeof(ekfloat)));
+      if (cudaGetLastError() != cudaSuccess) {
+        fprintf(stderr, "ERROR: Failed to allocate\n");
+      }
+    }
   }
 }
 
@@ -3419,9 +3527,9 @@ void ek_print_parameters() {
          ek_parameters.lb_force_density[2]);
   printf("  unsigned int number_of_species = %d;\n",
          ek_parameters.number_of_species);
-  printf("  int reaction_species[] = {%d, %d, %d};\n",
-         ek_parameters.reaction_species[0], ek_parameters.reaction_species[1],
-         ek_parameters.reaction_species[2]);
+//  printf("  int reaction_species[] = {%d, %d, %d};\n",
+//         ek_parameters.reaction_species[0], ek_parameters.reaction_species[1],
+//         ek_parameters.reaction_species[2]);
   printf("  float rho_reactant_reservoir = %f;\n",
          ek_parameters.rho_reactant_reservoir);
   printf("  float rho_product0_reservoir = %f;\n",
@@ -3686,6 +3794,89 @@ int ek_set_ext_force_density(int species, double ext_force_density_x,
 
   return 0;
 }
+
+#ifdef EK_CATALYTIC_REACTIONS
+int ek_set_reaction(bool reaction){
+  if (ek_parameters.reaction) {
+    for(int i = 0; i < ek_parameters.number_of_species; i++){
+      cuda_safe_mem(cudaFree((void **)&ek_parameters.reaction_flux[i]));
+    }
+  }
+
+  ek_parameters.reaction = reaction;
+
+  if (ek_parameters.reaction) {
+    for(int i = 0; i < ek_parameters.number_of_species; i++){
+std::cout << ek_parameters.reaction_flux[i] << "\n";
+      cuda_safe_mem(
+          cudaMalloc((void **)&ek_parameters.reaction_flux[i],
+                     ek_parameters.number_of_nodes * sizeof(ekfloat)));
+    }
+    if (cudaGetLastError() != cudaSuccess) {
+      fprintf(stderr, "ERROR: Failed to allocate\n");
+      return 1;
+    }
+    cuda_safe_mem(cudaMemcpyToSymbol(HIP_SYMBOL(ek_parameters_gpu),
+                                     &ek_parameters, sizeof(EK_parameters)));
+  }
+
+  return 0;
+}
+
+int ek_set_reaction_bounary_values(){
+  if(ek_initialized){
+// TODO: check if the mem needs to be freed first
+//    cuda_safe_mem(cudaFree((void **)&ek_parameters.reaction_species));
+//    cuda_safe_mem(cudaFree((void **)&ek_parameters.reaction_coefficients));
+//    cuda_safe_mem(cudaFree((void **)&ek_parameters.reaction_rate));
+    for(int i = 0; i < 3 ; i++){
+      (ek_parameters.reaction_species[i]) = 
+        (int *)Utils::malloc(LBBoundaries::lbboundaries.size() * sizeof(int));
+      (ek_parameters.reaction_coefficients[i]) = 
+        (ekfloat *)Utils::malloc(LBBoundaries::lbboundaries.size() * sizeof(ekfloat));
+    }
+    ek_parameters.reaction_rate =
+      (ekfloat *)Utils::malloc(LBBoundaries::lbboundaries.size() * sizeof(ekfloat));
+    for(int i = 0; i < 3; i++){
+      cuda_safe_mem(
+          cudaMalloc((void **)&ek_parameters.reaction_species[i],
+                     LBBoundaries::lbboundaries.size() * sizeof(int)));
+
+      cuda_safe_mem(
+          cudaMalloc((void **)&ek_parameters.reaction_coefficients[i],
+                     LBBoundaries::lbboundaries.size() * sizeof(ekfloat)));
+    }
+    cuda_safe_mem(
+        cudaMalloc((void **)&ek_parameters.reaction_rate,
+                   LBBoundaries::lbboundaries.size() * sizeof(ekfloat)));
+
+    int no = 0;
+    ekfloat temp;
+    for (auto it = LBBoundaries::lbboundaries.begin(); it != LBBoundaries::lbboundaries.end(); ++it, ++no) {
+      for(int i = 0; i < 3; i++){
+        cuda_safe_mem(cudaMemcpy(&ek_parameters.reaction_species[i][no], &(**it).reaction_species()[i],
+                                 sizeof(int),cudaMemcpyHostToDevice));
+        temp = (**it).reaction_coefficients()[i];
+        cuda_safe_mem(cudaMemcpy(&ek_parameters.reaction_coefficients[i][no], &temp,
+                                 sizeof(ekfloat),cudaMemcpyHostToDevice));
+      }
+      cuda_safe_mem(cudaMemcpy(&ek_parameters.reaction_rate[no], &(**it).reaction_rate(),
+                               sizeof(ekfloat),cudaMemcpyHostToDevice));
+    }
+
+
+
+    if (cudaGetLastError() != cudaSuccess) {
+      fprintf(stderr, "ERROR: Failed to allocate\n");
+      return 1;
+    }
+
+    cuda_safe_mem(cudaMemcpyToSymbol(HIP_SYMBOL(ek_parameters_gpu),
+                                     &ek_parameters, sizeof(EK_parameters)));
+  }
+  return 0;
+}
+#endif
 
 #ifdef EK_ELECTROSTATIC_COUPLING
 struct ek_charge_of_particle {

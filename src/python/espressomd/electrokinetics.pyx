@@ -1,7 +1,7 @@
 from __future__ import print_function, absolute_import
 include "myconfig.pxi"
 from .lb cimport HydrodynamicInteraction
-IF LB:
+IF LB_GPU:
     from .lb cimport lb_lbnode_is_index_valid
 from . import utils
 import numpy as np
@@ -43,7 +43,10 @@ IF ELECTROKINETICS:
             Returns the valid options used for the electrokinetic method.
 
             """
-            return "agrid", "lb_density", "viscosity", "friction", "bulk_viscosity", "gamma_even", "gamma_odd", "T", "prefactor", "stencil", "advection", "fluid_coupling"
+            IF EK_CATALYTIC_REACTIONS:
+              return "agrid", "lb_density", "viscosity", "friction", "bulk_viscosity", "gamma_even", "gamma_odd", "T", "prefactor", "stencil", "advection", "fluid_coupling", "reaction"
+            ELSE:
+              return "agrid", "lb_density", "viscosity", "friction", "bulk_viscosity", "gamma_even", "gamma_odd", "T", "prefactor", "stencil", "advection", "fluid_coupling"
 
         def required_keys(self):
             """
@@ -85,18 +88,34 @@ IF ELECTROKINETICS:
             else:
                 fluid_coupling = "estatics"
 
-            return {"agrid": ek_parameters.agrid,
-                    "lb_density": ek_parameters.lb_density,
-                    "viscosity": ek_parameters.viscosity,
-                    "bulk_viscosity": ek_parameters.bulk_viscosity,
-                    "gamma_odd": ek_parameters.gamma_odd,
-                    "gamma_even": ek_parameters.gamma_even,
-                    "friction": ek_parameters.friction,
-                    "T": ek_parameters.T,
-                    "prefactor": ek_parameters.prefactor,
-                    "stencil": stencil,
-                    "advection": ek_parameters.advection,
-                    "fluid_coupling": fluid_coupling}
+            IF EK_CATALYTIC_REACTIONS:
+              return {"agrid": ek_parameters.agrid,
+                      "lb_density": ek_parameters.lb_density,
+                      "viscosity": ek_parameters.viscosity,
+                      "bulk_viscosity": ek_parameters.bulk_viscosity,
+                      "gamma_odd": ek_parameters.gamma_odd,
+                      "gamma_even": ek_parameters.gamma_even,
+                      "friction": ek_parameters.friction,
+                      "T": ek_parameters.T,
+                      "prefactor": ek_parameters.prefactor,
+                      "stencil": stencil,
+                      "advection": ek_parameters.advection,
+                      "fluid_coupling": fluid_coupling,
+                      "reaction": ek_parameters.reaction}
+
+            ELSE:
+              return {"agrid": ek_parameters.agrid,
+                      "lb_density": ek_parameters.lb_density,
+                      "viscosity": ek_parameters.viscosity,
+                      "bulk_viscosity": ek_parameters.bulk_viscosity,
+                      "gamma_odd": ek_parameters.gamma_odd,
+                      "gamma_even": ek_parameters.gamma_even,
+                      "friction": ek_parameters.friction,
+                      "T": ek_parameters.T,
+                      "prefactor": ek_parameters.prefactor,
+                      "stencil": stencil,
+                      "advection": ek_parameters.advection,
+                      "fluid_coupling": fluid_coupling}
 
         def _set_params_in_es_core(self):
             if self._params["stencil"] == "linkcentered":
@@ -121,6 +140,8 @@ IF ELECTROKINETICS:
             ek_set_gamma_odd(self._params["gamma_odd"])
             ek_set_gamma_even(self._params["gamma_even"])
             ek_set_advection(self._params["advection"])
+            IF EK_CATALYTIC_REACTIONS:
+              ek_set_reaction(self._params["reaction"])
 
         def set_density(self, species=None, density=None, node=None):
             """
