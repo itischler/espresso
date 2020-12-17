@@ -177,5 +177,4 @@ struct LBRelaxationRates {
   }
 };
 
-
 #endif // LB_WALBERLA_H

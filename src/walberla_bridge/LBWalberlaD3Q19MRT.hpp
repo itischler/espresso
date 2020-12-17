@@ -19,10 +19,8 @@ public:
   };
   void construct_lattice_model(LBRelaxationRates relaxation_rates) {
     m_lattice_model = std::make_shared<LatticeModel>(
-        LatticeModel(m_last_applied_force_field_id,
-                     relaxation_rates.omega_bulk,
-                     relaxation_rates.omega_even,
-                     relaxation_rates.omega_odd,
+        LatticeModel(m_last_applied_force_field_id, relaxation_rates.omega_bulk,
+                     relaxation_rates.omega_even, relaxation_rates.omega_odd,
                      relaxation_rates.omega_shear));
   };
   void set_viscosity(double viscosity, double magic_number) override {
@@ -60,17 +58,15 @@ public:
                      double agrid, double tau,
                      const Utils::Vector3d &box_dimensions,
                      const Utils::Vector3i &node_grid, int n_ghost_layers)
-      : LBWalberlaImpl(agrid, tau, box_dimensions, node_grid,
-                       n_ghost_layers) {
+      : LBWalberlaImpl(agrid, tau, box_dimensions, node_grid, n_ghost_layers) {
     construct_lattice_model(viscosity, magic_number);
     setup_with_valid_lattice_model(density);
   };
-  LBWalberlaD3Q19MRT(LBRelaxationRates relaxation_rates,
-                     double density, double agrid, double tau,
+  LBWalberlaD3Q19MRT(LBRelaxationRates relaxation_rates, double density,
+                     double agrid, double tau,
                      const Utils::Vector3d &box_dimensions,
                      const Utils::Vector3i &node_grid, int n_ghost_layers)
-      : LBWalberlaImpl(agrid, tau, box_dimensions, node_grid,
-                       n_ghost_layers) {
+      : LBWalberlaImpl(agrid, tau, box_dimensions, node_grid, n_ghost_layers) {
     construct_lattice_model(relaxation_rates);
     setup_with_valid_lattice_model(density);
   };
