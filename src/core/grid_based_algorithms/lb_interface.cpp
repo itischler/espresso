@@ -284,7 +284,6 @@ void lb_lbfluid_save_checkpoint(const std::string &filename, bool binary) {
     }
 
     double laf[3];
-    Utils::Vector3i ind;
     auto const gridsize = lb_walberla()->get_grid_dimensions();
     auto const pop_size = lb_walberla()->stencil_size();
     std::vector<double> pop(pop_size);
@@ -301,9 +300,7 @@ void lb_lbfluid_save_checkpoint(const std::string &filename, bool binary) {
     for (int i = 0; i < gridsize[0]; i++) {
       for (int j = 0; j < gridsize[1]; j++) {
         for (int k = 0; k < gridsize[2]; k++) {
-          ind[0] = i;
-          ind[1] = j;
-          ind[2] = k;
+          Utils::Vector3i const ind{{i, j, k}};
           auto const pop = lb_lbnode_get_pop(ind);
           auto const laf = lb_lbnode_get_last_applied_force(ind);
           if (!binary) {
@@ -343,7 +340,6 @@ void lb_lbfluid_load_checkpoint(const std::string &filename, bool binary) {
     auto const pop_size = lb_walberla()->stencil_size();
     size_t saved_pop_size;
     Utils::Vector3d laf;
-    Utils::Vector3i ind;
     auto const gridsize = lb_walberla()->get_grid_dimensions();
     int saved_gridsize[3];
     if (!binary) {
@@ -389,9 +385,7 @@ void lb_lbfluid_load_checkpoint(const std::string &filename, bool binary) {
     for (int i = 0; i < gridsize[0]; i++) {
       for (int j = 0; j < gridsize[1]; j++) {
         for (int k = 0; k < gridsize[2]; k++) {
-          ind[0] = i;
-          ind[1] = j;
-          ind[2] = k;
+          Utils::Vector3i const ind{{i, j, k}};
           if (!binary) {
             for (size_t f = 0; f < saved_pop_size; ++f) {
               res = fscanf(cpfile, "%lf ", &pop[f]);
@@ -678,6 +672,26 @@ lb_lbfluid_get_interpolated_velocity(const Utils::Vector3d &pos) {
   throw NoLBActive();
 }
 
+const Utils::Vector3d
+lb_lbfluid_get_force_to_be_applied(const Utils::Vector3d &pos) {
+  if (lattice_switch == ActiveLB::WALBERLA) {
+#ifdef LB_WALBERLA
+    auto const agrid = lb_lbfluid_get_agrid();
+    auto const ind = Utils::Vector3i{static_cast<int>(pos[0] / agrid),
+                                     static_cast<int>(pos[1] / agrid),
+                                     static_cast<int>(pos[2] / agrid)};
+    auto const res = lb_walberla()->get_node_force_to_be_applied(ind);
+    if (!res) {
+      printf("%d: position: %g %g %g\n", this_node, pos[0], pos[1], pos[2]);
+      throw std::runtime_error(
+          "Force to be applied could not be obtained from Walberla");
+    }
+    return *res;
+#endif
+  }
+  throw NoLBActive();
+}
+
 void lb_lbfluid_add_force_at_pos(const Utils::Vector3d &pos,
                                  const Utils::Vector3d &f) {
   if (lattice_switch == ActiveLB::WALBERLA) {
@@ -690,11 +704,31 @@ void lb_lbfluid_add_force_at_pos(const Utils::Vector3d &pos,
       throw std::runtime_error("The non-linear interpolation scheme is not "
                                "implemented for the CPU LB.");
     case (InterpolationOrder::linear):
-      ::Communication::mpiCallbacks().call_all(Walberla::add_force_at_pos,
-                                               folded_pos, f);
+      ::Communication::mpiCallbacks().call_all(
+          Walberla::add_force_at_pos, folded_pos / lb_lbfluid_get_agrid(), f);
     }
 #endif
   } else {
     throw NoLBActive();
   }
+}
+
+double lb_lbfluid_get_interpolated_density(const Utils::Vector3d &pos) {
+  if (lattice_switch == ActiveLB::WALBERLA) {
+#ifdef LB_WALBERLA
+    auto const folded_pos = folded_position(pos, box_geo);
+    auto const interpolation_order =
+        lb_lbinterpolation_get_interpolation_order();
+    switch (interpolation_order) {
+    case (InterpolationOrder::quadratic):
+      throw std::runtime_error("The non-linear interpolation scheme is not "
+                               "implemented for the CPU LB.");
+    case (InterpolationOrder::linear):
+      return mpi_call(::Communication::Result::one_rank,
+                      Walberla::get_interpolated_density_at_pos,
+                      folded_pos / lb_lbfluid_get_agrid());
+    }
+#endif
+  }
+  throw NoLBActive();
 }

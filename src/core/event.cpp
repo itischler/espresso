@@ -32,6 +32,7 @@
 #include "config.hpp"
 #include "cuda_init.hpp"
 #include "cuda_interface.hpp"
+#include "cuda_utils.hpp"
 #include "electrostatics_magnetostatics/coulomb.hpp"
 #include "electrostatics_magnetostatics/dipole.hpp"
 #include "errorhandling.hpp"
@@ -53,6 +54,8 @@
 #endif
 
 #include <utils/mpi/all_compare.hpp>
+
+#include <cstdio>
 
 #include <mpi.h>
 
@@ -77,7 +80,11 @@ static int reinit_magnetostatics = false;
 void on_program_start() {
 #ifdef CUDA
   if (this_node == 0) {
-    cuda_init();
+    try {
+      cuda_init();
+    } catch (cuda_runtime_error const &err) {
+      // pass
+    }
   }
 #endif
 
@@ -86,11 +93,8 @@ void on_program_start() {
   /* initially go for domain decomposition */
   cells_re_init(CELL_STRUCTURE_DOMDEC);
 
-  /*
-    call all initializations to do only on the master node here.
-  */
   if (this_node == 0) {
-    /* interaction_data.c: make sure 0<->0 ia always exists */
+    /* make sure interaction 0<->0 always exists */
     make_particle_type_exist(0);
   }
 }
@@ -160,14 +164,14 @@ void on_observable_calc() {
     Coulomb::on_observable_calc();
     reinit_electrostatics = false;
   }
-#endif /*ifdef ELECTROSTATICS */
+#endif /* ELECTROSTATICS */
 
 #ifdef DIPOLES
   if (reinit_magnetostatics) {
     Dipole::on_observable_calc();
     reinit_magnetostatics = false;
   }
-#endif /*ifdef ELECTROSTATICS */
+#endif /* DIPOLES */
 
   clear_particle_node();
 }
@@ -226,33 +230,35 @@ void on_lbboundary_change() {
 #endif
 }
 
-void on_boxl_change() {
+void on_boxl_change(bool skip_method_adaption) {
   grid_changed_box_l(box_geo);
   /* Electrostatics cutoffs mostly depend on the system size,
-     therefore recalculate them. */
+   * therefore recalculate them. */
   cells_re_init(cell_structure.decomposition_type());
 
-/* Now give methods a chance to react to the change in box length */
+  if (not skip_method_adaption) {
+    /* Now give methods a chance to react to the change in box length */
 #ifdef ELECTROSTATICS
-  Coulomb::on_boxl_change();
+    Coulomb::on_boxl_change();
 #endif
 
 #ifdef DIPOLES
-  Dipole::on_boxl_change();
+    Dipole::on_boxl_change();
 #endif
 
-  lb_lbfluid_init();
+    lb_lbfluid_init();
 #ifdef LB_BOUNDARIES
-  LBBoundaries::lb_init_boundaries();
+    LBBoundaries::lb_init_boundaries();
 #endif
+  }
 }
 
 void on_cell_structure_change() {
   clear_particle_node();
 
-/* Now give methods a chance to react to the change in cell
-   structure. Most ES methods need to reinitialize, as they depend
-   on skin, node grid and so on. */
+  /* Now give methods a chance to react to the change in cell
+   * structure. Most ES methods need to reinitialize, as they depend
+   * on skin, node grid and so on. */
 #ifdef ELECTROSTATICS
   Coulomb::init();
 #endif /* ifdef ELECTROSTATICS */
@@ -274,38 +280,41 @@ void on_temperature_change() {
   }
 }
 
-void on_parameter_change(int field) {
-  switch (field) {
-  case FIELD_BOXL:
-    on_boxl_change();
-    break;
-  case FIELD_PERIODIC:
+void on_periodicity_change() {
 #ifdef SCAFACOS
 #ifdef ELECTROSTATICS
-    if (coulomb.method == COULOMB_SCAFACOS) {
-      Scafacos::fcs_coulomb()->update_system_params();
-    }
+  if (coulomb.method == COULOMB_SCAFACOS) {
+    Scafacos::fcs_coulomb()->update_system_params();
+  }
 #endif
 #ifdef SCAFACOS_DIPOLES
-    if (dipole.method == DIPOLAR_SCAFACOS) {
-      Scafacos::fcs_dipoles()->update_system_params();
-    }
+  if (dipole.method == DIPOLAR_SCAFACOS) {
+    Scafacos::fcs_dipoles()->update_system_params();
+  }
 #endif
 #endif
 #ifdef STOKESIAN_DYNAMICS
-    if (integ_switch == INTEG_METHOD_SD) {
-      if (box_geo.periodic(0) || box_geo.periodic(1) || box_geo.periodic(2))
-        runtimeErrorMsg() << "Illegal box periodicity for Stokesian Dynamics: "
-                          << box_geo.periodic(0) << " " << box_geo.periodic(1)
-                          << " " << box_geo.periodic(2) << "\n"
-                          << "  Required: 0 0 0\n";
-    }
-#endif
-  case FIELD_MIN_GLOBAL_CUT:
-  case FIELD_SKIN: {
-    cells_re_init(cell_structure.decomposition_type());
+  if (integ_switch == INTEG_METHOD_SD) {
+    if (box_geo.periodic(0) || box_geo.periodic(1) || box_geo.periodic(2))
+      runtimeErrorMsg() << "Illegal box periodicity for Stokesian Dynamics: "
+                        << box_geo.periodic(0) << " " << box_geo.periodic(1)
+                        << " " << box_geo.periodic(2) << "\n"
+                        << "  Required: 0 0 0\n";
   }
-    on_coulomb_change();
+#endif
+  on_skin_change();
+}
+
+void on_skin_change() {
+  cells_re_init(cell_structure.decomposition_type());
+  on_coulomb_change();
+}
+
+void on_parameter_change(int field) {
+  switch (field) {
+  case FIELD_MIN_GLOBAL_CUT:
+  case FIELD_SKIN:
+    on_skin_change();
     break;
   case FIELD_NODEGRID:
     grid_changed_n_nodes();

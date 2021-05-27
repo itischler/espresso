@@ -1,3 +1,4 @@
+
 # Copyright (C) 2010-2019 The ESPResSo project
 #
 # This file is part of ESPResSo.
@@ -18,6 +19,7 @@ import unittest as ut
 import unittest_decorators as utx
 import numpy as np
 
+import espressomd.math
 import espressomd.lb
 import espressomd.lbboundaries
 import espressomd.observables
@@ -38,6 +40,8 @@ VISC = 2.7
 DENS = 1.7
 TIME_STEP = 0.05
 BOX_L = 8.0
+# Location of the LB wall. This was box_l/2 -1 for Espresso's LB
+EFFECTIVE_RADIUS = BOX_L / 2 - 1.03
 LB_PARAMS = {'agrid': AGRID,
              'dens': DENS,
              'visc': VISC,
@@ -81,7 +85,8 @@ class LBPoiseuilleCommon:
     system = espressomd.System(box_l=[BOX_L] * 3)
     system.time_step = TIME_STEP
     system.cell_system.skin = 0.4 * AGRID
-    params = {'axis': [0, 0, 1]}
+    params = {'axis': [0, 0, 1],
+              'orientation': [1, 0, 0]}
 
     def prepare(self):
         """
@@ -89,6 +94,9 @@ class LBPoiseuilleCommon:
         accuracy.
 
         """
+        # disable periodicity except in the flow direction
+        self.system.periodicity = np.logical_not(self.params['axis'])
+
         local_lb_params = LB_PARAMS.copy()
         local_lb_params['ext_force_density'] = np.array(
             self.params['axis']) * EXT_FORCE
@@ -133,10 +141,10 @@ class LBPoiseuilleCommon:
         v_measured = velocities[1:-1]
         v_expected = poiseuille_flow(
             positions[1:-1] - 0.5 * BOX_L,
-            BOX_L / 2.0 - 1.0,
+            EFFECTIVE_RADIUS,
             EXT_FORCE,
             VISC * DENS)
-        f_half_correction = 0.5 * self.system.time_step * EXT_FORCE
+        f_half_correction = 0.5 * self.system.time_step * EXT_FORCE * AGRID**3 / DENS
         np.testing.assert_allclose(
             v_measured[1:-1] - f_half_correction, v_expected[1:-1], atol=0.0032)
 
@@ -148,8 +156,10 @@ class LBPoiseuilleCommon:
         else:
             obs_center = [BOX_L / 2.0, BOX_L / 2.0, 0.0]
         local_obs_params = OBS_PARAMS.copy()
-        local_obs_params['center'] = obs_center
-        local_obs_params['axis'] = self.params['axis']
+        ctp = espressomd.math.CylindricalTransformationParameters(center=obs_center,
+                                                                  axis=self.params['axis'],
+                                                                  orientation=self.params['orientation'])
+        local_obs_params['transform_params'] = ctp
         obs = espressomd.observables.CylindricalLBVelocityProfile(
             **local_obs_params)
         self.accumulator = espressomd.accumulators.MeanVarianceCalculator(
@@ -167,26 +177,29 @@ class LBPoiseuilleCommon:
             OBS_PARAMS['n_r_bins'])
         v_expected = poiseuille_flow(
             x,
-            BOX_L / 2.0 - 1.0,
+            EFFECTIVE_RADIUS,
             EXT_FORCE,
             VISC * DENS)
         v_measured = obs_result[:, 0, 0, 2]
-        f_half_correction = 0.5 * self.system.time_step * EXT_FORCE
+        f_half_correction = 0.5 * self.system.time_step * EXT_FORCE * AGRID**3 / DENS
         np.testing.assert_allclose(
             v_measured[1:-1] - f_half_correction, v_expected[1:-1], atol=0.0037)
 
     def test_x(self):
         self.params['axis'] = [1, 0, 0]
+        self.params['orientation'] = [0, 0, -1]
         self.compare_to_analytical()
         self.check_observable()
 
     def test_y(self):
         self.params['axis'] = [0, 1, 0]
+        self.params['orientation'] = [1, 0, 0]
         self.compare_to_analytical()
         self.check_observable()
 
     def test_z(self):
         self.params['axis'] = [0, 0, 1]
+        self.params['orientation'] = [1, 0, 0]
         self.compare_to_analytical()
         self.check_observable()
 

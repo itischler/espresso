@@ -40,7 +40,7 @@ class TestLB:
 
     system.periodicity = [1, 1, 1]
     system.time_step = 0.01
-    system.cell_system.skin = 1.0
+    system.cell_system.skin = 0
     lbf = None
     dof = 3.
 
@@ -130,12 +130,9 @@ class TestLB:
         #   scale=np.std(all_temp_particle,ddof=1))[1] - self.params["temp"]
         # temp_prec_fluid = scipy.stats.norm.interval(0.95, loc=self.params["temp"],
         #   scale=np.std(all_temp_fluid,ddof=1))[1] -self.params["temp"]
-        # WALBERLA TODO: Restore narrow tolerance
-        #temp_prec_particle = 0.06 * self.params["temp"]
-        #temp_prec_particle = 0.06 * self.params["temp"]
 
-        temp_prec_fluid = 0.1 * self.params["temp"]
-        temp_prec_particle = 0.2 * self.params["temp"]
+        temp_prec_fluid = 0.05 * self.params["temp"]
+        temp_prec_particle = 0.05 * self.params["temp"]
 
         self.assertAlmostEqual(
             np.mean(all_temp_fluid), self.params["temp"], delta=temp_prec_fluid)

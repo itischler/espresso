@@ -23,6 +23,7 @@
  */
 #include "global.hpp"
 
+#include "bonded_interactions/rigid_bond.hpp"
 #include "bonded_interactions/thermalized_bond.hpp"
 #include "communication.hpp"
 #include "config.hpp"
@@ -86,7 +87,6 @@ struct Datafield {
  *  Please declare where the variables come from.
  */
 const std::unordered_map<int, Datafield> fields{
-    {FIELD_BOXL, {box_geo.m_length.data(), 3, "box_l"}}, /* 0  from grid.cpp */
 #ifndef PARTICLE_ANISOTROPY
     {FIELD_LANGEVIN_GAMMA,
      {&langevin.gamma, 1, "langevin.gamma"}}, /* 5  from thermostat.cpp */
@@ -97,7 +97,7 @@ const std::unordered_map<int, Datafield> fields{
     {FIELD_INTEG_SWITCH,
      {&integ_switch, 1, "integ_switch"}}, /* 7  from integrate.cpp */
     {FIELD_RIGIDBONDS,
-     {&n_rigidbonds, 1, "n_rigidbonds"}}, /* 19 from rattle.cpp */
+     {&n_rigidbonds, 1, "n_rigidbonds"}}, /* 19 from rigid_bond.cpp */
     {FIELD_NODEGRID, {node_grid.data(), 3, "node_grid"}}, /* 20 from grid.cpp */
 #ifdef NPT
     {FIELD_NPTISO_G0,
@@ -105,9 +105,6 @@ const std::unordered_map<int, Datafield> fields{
     {FIELD_NPTISO_GV,
      {&npt_iso.gammav, 1, "npt_iso.gammav"}}, /* 22 from thermostat.cpp */
 #endif
-    {FIELD_PERIODIC,
-     {reinterpret_cast<size_t *>(&box_geo.m_periodic), 1,
-      "periodicity"}},                /* 28 from BoxGeometry.hpp */
     {FIELD_SKIN, {&skin, 1, "skin"}}, /* 29 from integrate.cpp */
     {FIELD_TEMPERATURE,
      {&temperature, 1, "temperature"}}, /* 30 from thermostat.cpp */

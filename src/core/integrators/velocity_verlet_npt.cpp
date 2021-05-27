@@ -27,6 +27,7 @@
 #include "cells.hpp"
 #include "communication.hpp"
 #include "errorhandling.hpp"
+#include "event.hpp"
 #include "grid.hpp"
 #include "integrate.hpp"
 #include "npt.hpp"
@@ -114,7 +115,7 @@ void velocity_verlet_npt_propagate_pos(const ParticleRange &particles) {
 
     L_new = pow(nptiso.volume, 1.0 / nptiso.dimension);
 
-    scal[1] = L_new / box_geo.length()[nptiso.non_const_dim];
+    scal[1] = L_new * box_geo.length_inv()[nptiso.non_const_dim];
     scal[0] = 1 / scal[1];
   }
   MPI_Bcast(scal, 3, MPI_DOUBLE, 0, comm_cart);
@@ -142,23 +143,23 @@ void velocity_verlet_npt_propagate_pos(const ParticleRange &particles) {
 
   /* Apply new volume to the box-length, communicate it, and account for
    * necessary adjustments to the cell geometry */
+  Utils::Vector3d new_box;
+
   if (this_node == 0) {
-    Utils::Vector3d new_box = box_geo.length();
+    new_box = box_geo.length();
 
     for (int i = 0; i < 3; i++) {
       if (nptiso.geometry & nptiso.nptgeom_dir[i] || nptiso.cubic_box) {
         new_box[i] = L_new;
       }
     }
-
-    box_geo.set_length(new_box);
   }
 
-  MPI_Bcast(box_geo.m_length.data(), 3, MPI_DOUBLE, 0, comm_cart);
+  boost::mpi::broadcast(comm_cart, new_box, 0);
 
-  /* fast box length update */
-  grid_changed_box_l(box_geo);
-  cells_re_init(cell_structure.decomposition_type());
+  box_geo.set_length(new_box);
+  // fast box length update
+  on_boxl_change(true);
 }
 
 void velocity_verlet_npt_propagate_vel(const ParticleRange &particles) {
@@ -167,7 +168,7 @@ void velocity_verlet_npt_propagate_vel(const ParticleRange &particles) {
 
   for (auto &p : particles) {
 #ifdef ROTATION
-    propagate_omega_quat_particle(p);
+    propagate_omega_quat_particle(p, time_step);
 #endif
 
     // Don't propagate translational degrees of freedom of vs
@@ -198,7 +199,7 @@ void velocity_verlet_npt_step_1(const ParticleRange &particles) {
 void velocity_verlet_npt_step_2(const ParticleRange &particles) {
   velocity_verlet_npt_propagate_vel_final(particles);
 #ifdef ROTATION
-  convert_torques_propagate_omega(particles);
+  convert_torques_propagate_omega(particles, time_step);
 #endif
   velocity_verlet_npt_finalize_p_inst();
 }

@@ -31,11 +31,14 @@ from .utils cimport Vector6d
 cdef class HydrodynamicInteraction(Actor):
     pass
 
-    #
+cdef class LBFluidRoutines:
+    cdef Vector3i node
+
+    ##############################################
     #
     # extern functions and structs
     #
-    #
+    ##############################################
 
 IF LB_WALBERLA:
     cdef extern from "LBWalberlaBase.hpp":
@@ -110,6 +113,7 @@ cdef extern from "grid_based_algorithms/lb_particle_coupling.hpp":
     void lb_lbcoupling_set_gamma(double) except +
     double lb_lbcoupling_get_gamma() except +
     bool lb_lbcoupling_is_seed_required() except +
+    void mpi_bcast_lb_particle_coupling()
 
 cdef extern from "grid_based_algorithms/lb_interpolation.hpp":
     cdef cppclass InterpolationOrder:
@@ -122,8 +126,12 @@ cdef extern from "grid_based_algorithms/lb_interpolation.hpp" namespace "Interpo
 
 IF LB_WALBERLA:
     cdef extern from "grid_based_algorithms/lb_walberla_instance.hpp":
+<<<<<<< HEAD
         void mpi_init_lb_walberla(double viscosity, double magic_number, double density, double agrid, double tau, double kT, unsigned int seed) except +
         void mpi_init_lb_walberla(LBRelaxationRates relaxation_rates, double density, double agrid, double tau, double kT, unsigned int seed) except +
+=======
+        void mpi_init_lb_walberla(double viscosity, double density, double agrid, double tau, Vector3d box_size, double kT, unsigned int seed) except +
+>>>>>>> walberla
         void mpi_destruct_lb_walberla() except +
 
 
