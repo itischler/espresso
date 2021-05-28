@@ -14,9 +14,9 @@ class LBWalberlaD3Q19FluctuatingMRT : public LBWalberlaImpl<LatticeModelName> {
   using LatticeModel = LatticeModelName;
 
 public:
-  void construct_lattice_model(double viscosity, double magic_number, double kT,
-                               unsigned int seed) {
+  void construct_lattice_model(double viscosity, double kT, unsigned int seed) {
     const real_t omega = 2 / (6 * real_c(viscosity) + 1);
+    const real_t magic_number = real_c(3.) / real_c(16.);
     const real_t omega_2 =
         (4 - 2 * omega) / (4 * magic_number * omega + 2 - omega);
     m_lattice_model = std::make_shared<LatticeModel>(
@@ -30,6 +30,7 @@ public:
   void set_viscosity(double viscosity) override {
     auto *lm = dynamic_cast<LatticeModel *>(m_lattice_model.get());
     const real_t omega = 2 / (6 * real_c(viscosity) + 1);
+    const real_t magic_number = real_c(3.) / real_c(16.);
     const real_t omega_2 =
         (4 - 2 * omega) / (4 * magic_number * omega + 2 - omega);
     lm->omega_shear_ = omega;
@@ -49,7 +50,7 @@ public:
                                 unsigned int seed)
       : LBWalberlaImpl(viscosity, grid_dimensions, node_grid, n_ghost_layers) {
     m_kT = kT;
-    construct_lattice_model(relaxation_rates, kT, seed);
+    construct_lattice_model(viscosity, kT, seed);
     setup_with_valid_lattice_model(density);
   };
   void integrate() override {

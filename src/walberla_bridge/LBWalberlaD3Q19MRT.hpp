@@ -14,6 +14,7 @@ class LBWalberlaD3Q19MRT : public LBWalberlaImpl<LatticeModelName> {
 public:
   void construct_lattice_model(double viscosity) {
     const real_t omega = 2 / (6 * real_c(viscosity) + 1);
+    const real_t magic_number = real_c(3.) / real_c(16.);
     const real_t omega_2 =
         (4 - 2 * omega) / (4 * magic_number * omega + 2 - omega);
     m_lattice_model = std::make_shared<LatticeModel>(
@@ -26,6 +27,7 @@ public:
   void set_viscosity(double viscosity) override {
     auto *lm = dynamic_cast<LatticeModel *>(m_lattice_model.get());
     const real_t omega = 2 / (6 * real_c(viscosity) + 1);
+    const real_t magic_number = real_c(3.) / real_c(16.);
     const real_t omega_2 =
         (4 - 2 * omega) / (4 * magic_number * omega + 2 - omega);
     lm->omega_shear_ = omega;

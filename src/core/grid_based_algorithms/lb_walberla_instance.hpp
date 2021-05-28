@@ -50,7 +50,6 @@ void init_lb_walberla(double viscosity, double density, double agrid,
  *  WALBERLA
  *
  *  @param viscosity Fluid viscosity
- *  @param magic_number Fluid magic number
  *  @param density Fluid density
  *  @param agrid  Size of one lb cell
  *  @param tau    LB time step

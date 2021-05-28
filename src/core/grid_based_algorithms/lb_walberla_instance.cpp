@@ -71,27 +71,7 @@ void init_lb_walberla(double viscosity, double density, double agrid,
     lb_walberla_params_instance = nullptr;
   }
 }
-REGISTER_CALLBACK(init_lb_walberla_magic_number)
-
-void init_lb_walberla_relaxation_rates(LBRelaxationRates relaxation_rates,
-                                       double density, double agrid, double tau,
-                                       const Utils::Vector3d &box_dimensions,
-                                       const Utils::Vector3i &node_grid,
-                                       double kT, unsigned int seed) {
-  // Exceptions need to be converted to runtime errors so they can be
-  // handled from Python in a parallel simulation
-  try {
-    lb_walberla_instance =
-        new_lb_walberla(relaxation_rates, density, agrid, tau, box_dimensions,
-                        node_grid, kT, seed);
-    lb_walberla_params_instance = new LBWalberlaParams{agrid, tau};
-  } catch (const std::exception &e) {
-    runtimeErrorMsg() << "Error during Walberla initialization: " << e.what();
-    lb_walberla_instance = nullptr;
-    lb_walberla_params_instance = nullptr;
-  }
-}
-REGISTER_CALLBACK(init_lb_walberla_relaxation_rates)
+REGISTER_CALLBACK(init_lb_walberla)
 
 void destruct_lb_walberla() {
   delete lb_walberla_instance;
