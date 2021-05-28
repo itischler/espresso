@@ -118,6 +118,7 @@ IF LB_WALBERLA:
     class VTKOutputAutomatic(VTKOutput):
         """
         Automatic VTK callback. Can be disabled at any time and re-enabled later.
+
         Please note that the internal VTK counter is no longer incremented
         when the callback is disabled, which means the number of LB steps
         between two frames will not always be an integer multiple of delta_N.
@@ -172,6 +173,7 @@ def _construct(cls, params):
 cdef class HydrodynamicInteraction(Actor):
     """
     Base class for LB implementations.
+
     Parameters
     ----------
     agrid : :obj:`float`
@@ -277,14 +279,17 @@ cdef class HydrodynamicInteraction(Actor):
 
     def get_interpolated_velocity(self, pos):
         """Get LB fluid velocity at specified position.
+
         Parameters
         ----------
         pos : (3,) array_like of :obj:`float`
             The position at which velocity is requested.
+
         Returns
         -------
         v : (3,) array_like :obj:`float`
             The LB fluid velocity at ``pos``.
+
         """
         cdef Vector3d p
 
@@ -295,12 +300,14 @@ cdef class HydrodynamicInteraction(Actor):
 
     def add_force_at_pos(self, pos, force):
         """Adds a force to the fluid at given position
+
         Parameters
         ----------
         pos : (3,) array_like of :obj:`float`
               The position at which the force will be added.
         force : (3,) array_like of :obj:`float`
               The force vector which will be distributed at the position.
+
         """
         cdef Vector3d p
         cdef Vector3d f
@@ -431,8 +438,10 @@ IF LB_WALBERLA:
                            base_folder='vtk_out', prefix='simulation_step'):
             """
             Create a VTK observable.
+
             Files are written to ``<base_folder>/<identifier>/<prefix>_*.vtu``.
             Summary is written to ``<base_folder>/<identifier>.pvd``.
+
             Parameters
             ----------
             identifier : :obj:`str`
@@ -598,6 +607,7 @@ class LBSlice:
 def _add_lb_slice_properties():
     """
     Automatically add all of LBFluidRoutines's properties to LBSlice.
+
     """
 
     def set_attribute(lb_slice, value, attribute):
@@ -631,6 +641,7 @@ def _add_lb_slice_properties():
         """
         Getter function that copies attribute from every member of
         lb_slice into an array (if possible).
+
         """
 
         indices = [lb_slice.x_indices, lb_slice.y_indices, lb_slice.z_indices]
@@ -656,3 +667,4 @@ def _add_lb_slice_properties():
 
 
 _add_lb_slice_properties()
+

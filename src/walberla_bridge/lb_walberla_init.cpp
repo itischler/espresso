@@ -32,7 +32,6 @@ void walberla_mpi_init() {
       walberla::mpi::Environment(argc, argv);
 }
 
-
 LBWalberlaBase *new_lb_walberla(double viscosity, double density,
                                 const Utils::Vector3i &grid_dimensions,
                                 const Utils::Vector3i &node_grid, double kT,

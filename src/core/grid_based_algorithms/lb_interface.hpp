@@ -247,3 +247,4 @@ void lb_lbfluid_add_force_at_pos(const Utils::Vector3d &pos,
 double lb_lbfluid_get_interpolated_density(const Utils::Vector3d &pos);
 
 #endif
+

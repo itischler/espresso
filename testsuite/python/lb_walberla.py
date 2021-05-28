@@ -34,7 +34,6 @@ class LbWalberlaTest(ut.TestCase):
         s.time_step = 0.2
         s.cell_system.skin = 0.
         dens_init = 1.3
-
         lbf = LBFluidWalberla(
             agrid=.6,
             dens=dens_init,

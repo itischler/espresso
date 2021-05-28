@@ -64,3 +64,4 @@ void mpi_destruct_lb_walberla();
 #endif // LB_WALBERLA
 
 #endif
+
