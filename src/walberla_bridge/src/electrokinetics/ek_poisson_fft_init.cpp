@@ -17,8 +17,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "FFT_heffte_CPU.h"
+
 #include <walberla_bridge/LatticeWalberla.hpp>
-#include <walberla_bridge/electrokinetics/PoissonSolver/FFT.hpp>
+#include <walberla_bridge/electrokinetics/PoissonSolver/FFT_heffte.hpp>
 #include <walberla_bridge/electrokinetics/ek_poisson_fft_init.hpp>
 
 #include <memory>
@@ -29,9 +31,9 @@ std::shared_ptr<walberla::PoissonSolver>
 new_ek_poisson_fft(std::shared_ptr<LatticeWalberla> const &lattice,
                    double permittivity, bool single_precision) {
   if (single_precision) {
-    return std::make_shared<walberla::FFT<float>>(lattice, permittivity);
+    return std::make_shared<walberla::FFT_CPU<float>>(lattice, permittivity);
   }
-  return std::make_shared<walberla::FFT<double>>(lattice, permittivity);
+  return std::make_shared<walberla::FFT_CPU<double>>(lattice, permittivity);
 }
 
 } // namespace walberla

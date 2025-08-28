@@ -27,7 +27,7 @@ import espressomd.electrokinetics
 
 @utx.skipIfMissingFeatures(["WALBERLA", "WALBERLA_FFT"])
 class EKEOF:
-    BOX_L = [18., 18., 18.]
+    BOX_L = [15., 18., 21.]
     AGRID = 1.5
     DIFFUSION_COEFFICIENT = 0.0
     TAU = 1.6
@@ -48,7 +48,6 @@ class EKEOF:
         epsR = 18.5
         kT = 2.
         valency = 1.1
-        width = int(self.BOX_L[0] / self.AGRID)
 
         density = 0.0
         external_electric_field = np.asarray([0.0, 0.0, 0.0])
@@ -99,7 +98,8 @@ class EKEOF:
             # We divide by BOX_L, because over the PBC the surfaces are
             # one unit apart, which defines the voltage
             ref_voltage = self.AGRID * valency * \
-                (self.BOX_L[0] - self.AGRID) / eps0 / epsR / self.BOX_L[0]
+                (self.BOX_L[dir] - self.AGRID) / eps0 / epsR / self.BOX_L[dir]
+            width = int(self.BOX_L[dir] / self.AGRID)
             slope = -ref_voltage / (width - 1)
 
             for d in range(width):
