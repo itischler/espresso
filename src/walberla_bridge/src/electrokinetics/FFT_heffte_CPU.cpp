@@ -73,14 +73,16 @@ FFT_heffte_CPU<FloatType>::FFT_heffte_CPU(std::shared_ptr<LatticeWalberla> latti
         get_lattice().get_ghost_layers());
 
   heffte = std::make_shared<heffte_container>();
-  auto dim = get_lattice().get_grid_dimensions();
+  auto grid_range = get_lattice().get_local_grid_range();
+  auto dim = grid_range.second - grid_range.first;
+  auto global_dim = get_lattice().get_grid_dimensions();
   auto offset_vec = Utils::Vector3i({1, 1, 1});
   auto order = Utils::Vector3i({0, 1, 2});
   heffte->m_box_in = std::make_shared<heffte::box3d<>>(
-      to_array(Utils::Vector3i({0, 0, 0})), to_array(dim - offset_vec),
+      to_array(Utils::Vector3i(grid_range.first)), to_array(grid_range.second - offset_vec),
       to_array(order));
   heffte->m_box_out = std::make_shared<heffte::box3d<>>(
-      to_array(Utils::Vector3i({0, 0, 0})), to_array(dim - offset_vec),
+      to_array(Utils::Vector3i(grid_range.first)), to_array(grid_range.second - offset_vec),
       to_array(order));
   heffte->m_fft = std::make_shared<heffte::fft3d<heffte::backend::fftw>>(
       *(heffte->m_box_in), *(heffte->m_box_out), MPI_COMM_WORLD);
@@ -95,7 +97,8 @@ FFT_heffte_CPU<FloatType>::FFT_heffte_CPU(std::shared_ptr<LatticeWalberla> latti
   for (int x = 0; x < dim[0]; x++){
     for (int y = 0; y < dim[1]; y++){
       for (int z = 0; z < dim[2]; z++){
-        m_greens[pos_to_linear_index(x,y,z,dim)] = greens_function<FloatType>(x, y, z, dim);
+        m_greens[pos_to_linear_index(x,y,z,dim)] = greens_function<FloatType>(x + grid_range.first[0],
+          y + grid_range.first[1], z + grid_range.first[2], global_dim);
       }
     }
   }
@@ -109,8 +112,11 @@ FFT_heffte_CPU<FloatType>::FFT_heffte_CPU(std::shared_ptr<LatticeWalberla> latti
 }
 
 template <typename FloatType> void FFT_heffte_CPU<FloatType>::reset_charge_field() {
-  auto dim = get_lattice().get_grid_dimensions();
-  for (int x = 0; x < dim[0]; x++){
+  auto grid_range = get_lattice().get_local_grid_range();
+  auto dim = grid_range.second - grid_range.first;
+  for (int x = 0; x < dim[0]; x++){for (int i = 0; i < m_potential_fourier.size(); i++){
+    m_potential_fourier[i] *= m_greens[i];
+  }
     for (int y = 0; y < dim[1]; y++){
       for (int z = 0; z < dim[2]; z++){
         m_potential[pos_to_linear_index(x,y,z,dim)] = FloatType(0.0);
@@ -122,7 +128,8 @@ template <typename FloatType> void FFT_heffte_CPU<FloatType>::reset_charge_field
 template <typename FloatType>
 void FFT_heffte_CPU<FloatType>::add_charge_to_field(std::size_t id, double valency,
                                               bool is_double_precision) {
-  auto dim = get_lattice().get_grid_dimensions();
+  auto grid_range = get_lattice().get_local_grid_range();
+  auto dim = grid_range.second - grid_range.first;
   auto const factor = FloatType_c(valency) / FloatType_c(get_permittivity());
   const auto density_id = walberla::BlockDataID(id);
   for (auto &block : *get_lattice().get_blocks()) {
@@ -139,17 +146,19 @@ void FFT_heffte_CPU<FloatType>::add_charge_to_field(std::size_t id, double valen
 }
 
 template <typename FloatType> void FFT_heffte_CPU<FloatType>::solve() {
-  auto dim = get_lattice().get_grid_dimensions();
+  auto grid_range = get_lattice().get_local_grid_range();
+  auto dim = grid_range.second - grid_range.first;
+  heffte->m_fft->forward(m_potential.data(), m_potential_fourier.data(),
+                          heffte->m_buffer->data());
+  for (int i = 0; i < m_potential_fourier.size(); i++){
+    m_potential_fourier[i] *= m_greens[i];
+  }
+  heffte->m_fft->backward(m_potential_fourier.data(), m_potential.data(),
+                          heffte->m_buffer->data());
+
   for (auto &block : *get_lattice().get_blocks()) {
     auto potential_with_ghosts =
-        block.template getData<PotentialField>(m_potential_field_with_ghosts_id);
-    heffte->m_fft->forward(m_potential.data(), m_potential_fourier.data(),
-                           heffte->m_buffer->data());
-    for (int i = 0; i < m_potential_fourier.size(); i++){
-      m_potential_fourier[i] *= m_greens[i];
-    }
-    heffte->m_fft->backward(m_potential_fourier.data(), m_potential.data(),
-                            heffte->m_buffer->data());
+    block.template getData<PotentialField>(m_potential_field_with_ghosts_id);
     for (int x = 0; x < dim[0]; x++){
       for (int y = 0; y < dim[1]; y++){
         for (int z = 0; z < dim[2]; z++){
@@ -157,8 +166,8 @@ template <typename FloatType> void FFT_heffte_CPU<FloatType>::solve() {
         }
       }
     }
-    ghost_communication();
   }
+  ghost_communication();
 }
 
 template class FFT_heffte_CPU<float>;
