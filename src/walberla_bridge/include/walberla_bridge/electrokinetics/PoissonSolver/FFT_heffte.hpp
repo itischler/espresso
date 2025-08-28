@@ -25,64 +25,63 @@
 #include "../../../../src/electrokinetics/generated_kernels/EK_FieldAccessors_single_precision.h"
 #include "../../BlockAndCell.hpp"
 
+#include <blockforest/communication/UniformBufferedScheme.h>
 #include <domain_decomposition/BlockDataID.h>
 #include <field/AddToStorage.h>
 #include <field/GhostLayerField.h>
+#include <field/communication/PackInfo.h>
 #include <field/vtk/VTKWriter.h>
+#include <stencil/D3Q27.h>
+
+#include <walberla_bridge/LatticeWalberla.hpp>
 
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <memory>
 #include <numbers>
 #include <utility>
 
 namespace walberla {
-template <typename FloatType> class FFT_heffte_CPU;
 
-template <typename FloatType> class FFT_CPU : public PoissonSolver {
+template <typename FloatType> class FFT_heffte : public PoissonSolver {
 private:
+  struct heffte_container;
   template <typename T> FloatType FloatType_c(T t) {
     return numeric_cast<FloatType>(t);
   }
 
-  std::shared_ptr<FFT_heffte_CPU<FloatType>> fft_heffte;
+  using ComplexType = std::complex<FloatType>;
   using PotentialField = GhostLayerField<FloatType, 1>;
 
-public:
-  FFT_CPU() = default;
-  FFT_CPU(std::shared_ptr<LatticeWalberla> lattice, double permittivity)
-      : PoissonSolver(lattice, permittivity) {
-    fft_heffte = std::make_shared<FFT_heffte_CPU<FloatType>>(lattice, permittivity);
-  }
-  ~FFT_CPU() override = default;
+  std::shared_ptr<LatticeWalberla> m_lattice;
 
-  void reset_charge_field() override { fft_heffte->reset_charge_field(); }
+  walberla::BlockDataID m_potential_field_with_ghosts_id;
+  std::vector<FloatType> m_greens;
+  std::vector<FloatType> m_potential;
+  std::vector<ComplexType> m_potential_fourier;
+
+  std::shared_ptr<blockforest::StructuredBlockForest> m_blocks;
+  std::shared_ptr<heffte_container> heffte;
+
+  using FullCommunicator =
+      blockforest::communication::UniformBufferedScheme<stencil::D3Q27>;
+  std::shared_ptr<FullCommunicator> m_full_communication;
+
+public:
+  FFT_heffte(std::shared_ptr<LatticeWalberla> lattice, double permittivity);
+  ~FFT_heffte() override = default;
+
+  void reset_charge_field() override;
 
   void add_charge_to_field(std::size_t id, double valency,
-                           bool is_double_precision) override {
-    fft_heffte->add_charge_to_field(id, valency, is_double_precision);
-  }
+                           bool is_double_precision) override;
 
   std::size_t get_potential_field_id() const noexcept override {
-    return fft_heffte->get_potential_field_id();
+    return static_cast<std::size_t>(m_potential_field_with_ghosts_id);
   }
 
-  void solve() override {
-    fft_heffte->solve();
-    integrate_vtk_writers();
-  }
-
-  void set_permittivity(double permittivity) noexcept override {
-    fft_heffte->set_permittivity(permittivity);
-  }
-
-  [[nodiscard]] double get_permittivity() const noexcept override {
-    return fft_heffte->get_permittivity();
-  }
-
-  [[nodiscard]] LatticeWalberla const &get_lattice() const noexcept override {
-    return fft_heffte->get_lattice();
-  }
+  void solve() override;
 
   [[nodiscard]] std::optional<double>
   get_node_potential(Utils::Vector3i const &node,
@@ -189,7 +188,7 @@ protected:
   }
 
 private:
-  void ghost_communication() { fft_heffte->ghost_communication(); }
+  void ghost_communication() { (*m_full_communication)(); }
 };
 
 } // namespace walberla

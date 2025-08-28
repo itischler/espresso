@@ -25,13 +25,12 @@ target_sources(espresso_walberla PRIVATE ek_poisson_none_init.cpp)
 if(ESPRESSO_BUILD_WITH_WALBERLA_FFT)
   add_library(espresso_fft OBJECT)
   add_library(espresso::fft ALIAS espresso_fft)
-  target_sources(espresso_fft PRIVATE FFT_heffte_CPU.cpp)
+  target_sources(espresso_fft PRIVATE FFT_heffte.cpp)
   target_link_libraries(
-      espresso_fft PUBLIC MPI::MPI_CXX espresso::utils
-      PRIVATE espresso::walberla::cpp_flags espresso::walberla_codegen
-      Heffte::Heffte walberla::domain_decomposition walberla::blockforest)
-  set_target_properties(espresso_fft PROPERTIES POSITION_INDEPENDENT_CODE
-                                                      ON)
+    espresso_fft PUBLIC MPI::MPI_CXX espresso::utils
+    PRIVATE espresso::walberla::cpp_flags espresso::walberla_codegen
+            Heffte::Heffte walberla::domain_decomposition walberla::blockforest)
+  set_target_properties(espresso_fft PROPERTIES POSITION_INDEPENDENT_CODE ON)
   target_link_libraries(espresso_walberla PRIVATE espresso_fft)
   target_sources(espresso_walberla PRIVATE ek_poisson_fft_init.cpp)
 endif()
