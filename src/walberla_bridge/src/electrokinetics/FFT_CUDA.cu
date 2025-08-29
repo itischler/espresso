@@ -46,8 +46,10 @@ template <typename FloatType> struct FFT_CUDA<FloatType>::heffte_container {
 
 template <typename FloatType>
 __global__ void
-create_greens_function(gpu::FieldAccessor<FloatType> greens_function, int x,
-                       int y, int z) {
+create_greens_function(gpu::FieldAccessor<FloatType> greens_function,
+                       int x_min, int y_min, int z_min,
+                       int x_max, int y_max, int z_max,
+                       int dim_x, int dim_y, int dim_z) {
   using RealType = std::conditional<std::is_same<FloatType, float>::value,
                                     cufftReal, cufftDoubleReal>::type;
   greens_function.set(blockIdx, threadIdx);
@@ -55,7 +57,9 @@ create_greens_function(gpu::FieldAccessor<FloatType> greens_function, int x,
       greens_function.getLinearIndex(blockIdx, threadIdx, gridDim, blockDim);
   unsigned int tmp;
   unsigned int coord[3];
-
+  int x = x_max - x_min;
+  int y = y_max - y_min;
+  int z = z_max - z_min;
   coord[0] = index % x;
   tmp = index / x;
   coord[1] = tmp % y;
@@ -67,14 +71,14 @@ create_greens_function(gpu::FieldAccessor<FloatType> greens_function, int x,
     } else {
       constexpr RealType two_pi = 2.0f * M_PI;
       greens_function.get(0u) = -0.5f /
-                                (cos(two_pi * static_cast<RealType>(coord[0]) /
-                                     static_cast<RealType>(x)) +
-                                 cos(two_pi * static_cast<RealType>(coord[1]) /
-                                     static_cast<RealType>(y)) +
-                                 cos(two_pi * static_cast<RealType>(coord[2]) /
-                                     static_cast<RealType>(z)) -
+                                (cos(two_pi * static_cast<RealType>(coord[0] + x_min) /
+                                     static_cast<RealType>(dim_x)) +
+                                 cos(two_pi * static_cast<RealType>(coord[1] + y_min) /
+                                     static_cast<RealType>(dim_y)) +
+                                 cos(two_pi * static_cast<RealType>(coord[2] + z_min) /
+                                     static_cast<RealType>(dim_z)) -
                                  3.0f) /
-                                static_cast<RealType>(x * y * z);
+                                static_cast<RealType>(dim_x * dim_y * dim_z);
     }
   }
 }
@@ -141,34 +145,48 @@ FFT_CUDA<FloatType>::FFT_CUDA(std::shared_ptr<LatticeWalberla> lattice,
       get_lattice().get_blocks(), "fourier field", 1, field::fzyx, 0, false);
   reset_charge_field();
 
+  heffte::plan_options options = heffte::default_options<heffte::backend::cufft>();
+  options.use_reorder = false;
+  options.algorithm = heffte::reshape_algorithm::p2p_plined;
+  options.use_pencils = true;
+
   heffte = std::make_shared<heffte_container>();
-  auto dim = get_lattice().get_grid_dimensions();
+  auto grid_range = get_lattice().get_local_grid_range();
+  auto dim = grid_range.second - grid_range.first;
+  auto global_dim = get_lattice().get_grid_dimensions();
   auto offset_vec = Utils::Vector3i({1, 1, 1});
   auto order = Utils::Vector3i({0, 1, 2});
+
   heffte->m_box_in = std::make_shared<heffte::box3d<>>(
-      to_array(Utils::Vector3i({0, 0, 0})), to_array(dim - offset_vec),
-      to_array(order));
+      to_array(Utils::Vector3i(grid_range.first)),
+      to_array(grid_range.second - offset_vec), to_array(order));
   heffte->m_box_out = std::make_shared<heffte::box3d<>>(
-      to_array(Utils::Vector3i({0, 0, 0})), to_array(dim - offset_vec),
-      to_array(order));
+      to_array(Utils::Vector3i(grid_range.first)),
+      to_array(grid_range.second - offset_vec), to_array(order));
   heffte->m_fft = std::make_shared<heffte::fft3d<heffte::backend::cufft>>(
-      *(heffte->m_box_in), *(heffte->m_box_out), MPI_COMM_WORLD);
+      *(heffte->m_box_in), *(heffte->m_box_out), MPI_COMM_WORLD, options);
   heffte->m_buffer = std::make_shared<
       heffte::fft3d<heffte::backend::cufft>::buffer_container<ComplexType>>(
       heffte->m_fft->size_workspace());
-
-  auto block = get_lattice().get_blocks()->getBlock(0, 0, 0);
-  auto green_field =
-      block->template getData<GreenFunctionField>(m_greens_function_field_id);
-  auto kernel = gpu::make_kernel(create_greens_function<FloatType>);
-  kernel.addFieldIndexingParam(
-      gpu::FieldIndexing<FloatType>::xyz(*green_field));
-  kernel.addParam(dim[0]);
-  kernel.addParam(dim[1]);
-  kernel.addParam(dim[2]);
-  kernel();
-
+  std::cout << heffte->m_fft->size_workspace() << std::endl;
   for (auto &block : *get_lattice().get_blocks()) {
+    auto green_field =
+        block.template getData<GreenFunctionField>(m_greens_function_field_id);
+    auto kernel = gpu::make_kernel(create_greens_function<FloatType>);
+    kernel.addFieldIndexingParam(
+        gpu::FieldIndexing<FloatType>::xyz(*green_field));
+    kernel.addParam(grid_range.first[0]);
+    kernel.addParam(grid_range.first[1]);
+    kernel.addParam(grid_range.first[2]);
+    kernel.addParam(grid_range.second[0]);
+    kernel.addParam(grid_range.second[1]);
+    kernel.addParam(grid_range.second[2]);
+    kernel.addParam(global_dim[0]);
+    kernel.addParam(global_dim[1]);
+    kernel.addParam(global_dim[2]);
+    kernel();
+
+  
     auto potential =
         block.template getData<PotentialField>(m_potential_field_id);
     auto potential_ghosts = block.template getData<PotentialField>(
